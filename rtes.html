@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEOBANK | RADICAL SYSTEM v3.0</title>
+    
+    <!-- Dependencies -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Lexend+Mega:wght@400;900&family=Space+Grotesk:wght@300;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        :root {
+            --primary: #FF3131;
+            --secondary: #00D1FF;
+            --accent: #FFD600;
+            --black: #000000;
+            --white: #ffffff;
+            --bg: #F1E5D1;
+        }
+
+        body { 
+            background: var(--bg); 
+            font-family: 'Space Grotesk', sans-serif;
+            overflow-x: hidden;
+        }
+
+        h1, h2, h3, .brutal-text { font-family: 'Lexend Mega', sans-serif; text-transform: uppercase; }
+
+        /* Neobrutalism Style */
+        .brutal-card {
+            background: var(--white);
+            border: 4px solid var(--black);
+            box-shadow: 8px 8px 0px var(--black);
+            transition: 0.2s;
+        }
+
+        .brutal-btn {
+            border: 4px solid var(--black);
+            box-shadow: 5px 5px 0px var(--black);
+            font-weight: 900;
+            transition: 0.1s;
+        }
+        .brutal-btn:hover { transform: translate(-3px, -3px); box-shadow: 8px 8px 0px var(--black); }
+
+        /* Liquid Glass iOS 26 Style */
+        .liquid-glass {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 40px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .liquid-bg {
+            background: linear-gradient(45deg, #ff3131, #00d1ff, #ffd600, #ff3131);
+            background-size: 400% 400%;
+            animation: gradientMove 10s ease infinite;
+        }
+
+        @keyframes gradientMove {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Mockup Phone */
+        .phone-frame {
+            width: 280px;
+            height: 580px;
+            border: 12px solid #222;
+            border-radius: 40px;
+            position: relative;
+            background: #fff;
+            overflow: hidden;
+            box-shadow: 20px 20px 0px var(--black);
+        }
+
+        /* Page Stacking Effect */
+        .stacked-page {
+            position: relative;
+            z-index: 10;
+            margin-top: -100px;
+            padding-top: 150px;
+        }
+
+        /* Nav Vertical */
+        .sidebar-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            border: 3px solid transparent;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .sidebar-item.active {
+            background: var(--accent);
+            border-color: var(--black);
+            box-shadow: 4px 4px 0px #000;
+        }
+
+        #main-app, #login-overlay { display: none; }
+    </style>
+</head>
+<body>
+
+    <!-- MODAL: LEAVE CONFIRMATION -->
+    <div id="leave-modal" class="fixed inset-0 bg-black/80 z-[9999] hidden flex items-center justify-center p-4">
+        <div class="brutal-card p-8 max-w-sm w-full text-center">
+            <h2 class="text-2xl mb-4">Meninggalkan Sistem?</h2>
+            <p class="mb-6">Apakah anda yakin ingin meninggalkan halaman aman NeoBank?</p>
+            <div class="flex gap-4 justify-center">
+                <button onclick="closeLeaveModal()" class="brutal-btn bg-gray-200 px-6 py-2">BATAL</button>
+                <a id="leave-link" href="#" class="brutal-btn bg-primary text-white px-6 py-2">YA, KELUAR</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- LANDING PAGE WRAPPER -->
+    <div id="landing-site">
+        <!-- Navbar -->
+        <nav class="flex justify-between items-center px-10 py-6 bg-white border-b-4 border-black sticky top-0 z-50">
+            <div class="brand text-2xl font-black bg-primary text-white p-2 border-4 border-black shadow-[4px_4px_0px_#000]">NEO_BANK</div>
+            <div class="hidden md:flex gap-8 font-bold">
+                <a href="#page2" class="hover:underline">MENGAPA KAMI?</a>
+                <a href="#page3" class="hover:underline">PARTNER</a>
+                <a href="#page5" class="hover:underline">FITUR</a>
+                <a href="#page6" class="hover:underline">FAQ</a>
+            </div>
+            <div class="flex gap-4">
+                <button onclick="showLogin()" class="brutal-btn bg-accent px-6 py-2">MASUK</button>
+            </div>
+        </nav>
+
+        <!-- PAGE 1: HERO & INTERACTIVE PHONE -->
+        <section class="min-h-screen flex flex-col md:flex-row items-center justify-center gap-10 px-10 py-20">
+            <div class="md:w-1/2" id="hero-text">
+                <h1 class="text-6xl md:text-8xl font-black leading-none mb-6">FUTURE <span class="text-secondary">IS BOLD.</span></h1>
+                <p class="text-xl mb-10 border-l-8 border-primary pl-4">Sistem perbankan neobrutalis pertama di Indonesia dengan enkripsi tingkat militer dan transparansi total.</p>
+                <div class="flex gap-6">
+                    <button onclick="showLogin()" class="brutal-btn bg-primary text-white px-8 py-4 text-xl">MULAI SEKARANG</button>
+                    <button onclick="gsap.to(window, {duration: 1, scrollTo: '#page2'})" class="brutal-btn bg-white px-8 py-4 text-xl">PELAJARI</button>
+                </div>
+            </div>
+            <div class="md:w-1/2 flex justify-center" id="hero-phone">
+                <div class="phone-frame">
+                    <div class="bg-black text-white p-4 flex justify-between items-center text-xs">
+                        <span>9:41</span>
+                        <div class="flex gap-1"><i class="fas fa-signal"></i><i class="fas fa-wifi"></i><i class="fas fa-battery-full"></i></div>
+                    </div>
+                    <div class="p-4">
+                        <div class="w-full h-32 bg-secondary border-4 border-black rounded-xl mb-4 p-3 relative overflow-hidden shadow-[4px_4px_0px_#000]">
+                            <div class="text-[10px] font-bold">NEOCARD PLATINUM</div>
+                            <div class="mt-4 font-black">Rp 12.500.000</div>
+                            <div class="absolute bottom-2 right-2 text-xl"><i class="fab fa-cc-visa"></i></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 mb-4">
+                            <div class="border-2 border-black p-2 text-center text-[10px] font-bold">TRANSFER</div>
+                            <div class="border-2 border-black p-2 text-center text-[10px] font-bold">TOPUP</div>
+                        </div>
+                        <div class="text-[10px] font-bold mb-2">LAST TRANSACTIONS</div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between border-b border-gray-200 pb-1 text-[9px]">
+                                <span>Starbucks Coffee</span>
+                                <span class="text-red-500">-55k</span>
+                            </div>
+                            <div class="flex justify-between border-b border-gray-200 pb-1 text-[9px]">
+                                <span>Netflix Subscription</span>
+                                <span class="text-red-500">-180k</span>
+                            </div>
+                            <div class="flex justify-between border-b border-gray-200 pb-1 text-[9px]">
+                                <span>Salary Deposit</span>
+                                <span class="text-green-500">+15.000k</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 w-20 h-1 bg-black rounded-full"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- PAGE 2: WHY NEOBANK -->
+        <section id="page2" class="min-h-screen bg-black text-white flex flex-col justify-center px-10 py-20">
+            <h2 class="text-5xl md:text-7xl font-black mb-12 text-accent">KENAPA NEO_BANK?</h2>
+            <div class="grid md:grid-cols-3 gap-10">
+                <div class="brutal-card bg-white text-black p-8">
+                    <i class="fas fa-bolt text-4xl mb-4 text-primary"></i>
+                    <h3 class="text-2xl font-black mb-4">INSTANT LOGIC</h3>
+                    <p>Semua transaksi diproses dalam 0.02 detik menggunakan infrastruktur cloud-native.</p>
+                </div>
+                <div class="brutal-card bg-white text-black p-8">
+                    <i class="fas fa-shield-heart text-4xl mb-4 text-secondary"></i>
+                    <h3 class="text-2xl font-black mb-4">TOTAL SECURITY</h3>
+                    <p>Audit keamanan berlapis oleh Komdigi & BI memastikan aset Anda aman 100%.</p>
+                </div>
+                <div class="brutal-card bg-white text-black p-8">
+                    <i class="fas fa-face-smile text-4xl mb-4 text-accent"></i>
+                    <h3 class="text-2xl font-black mb-4">ZERO FEES</h3>
+                    <p>Tidak ada biaya admin siluman. Transparan, jujur, dan berpihak pada nasabah.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- PAGE 3: API PARTNERS (STACKED EFFECT) -->
+        <section id="page3" class="stacked-page min-h-screen bg-secondary px-10 py-20 border-t-8 border-black">
+            <h2 class="text-5xl font-black mb-12">GLOBAL API CONNECT</h2>
+            <p class="text-2xl mb-12 max-w-2xl font-bold">Kami bekerja sama dengan infrastruktur terbaik dunia untuk menjamin stabilitas sistem Anda.</p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <!-- 7 Partners + 1 -->
+                <div class="brutal-card p-6 flex items-center gap-4"><i class="fab fa-stripe fa-2x"></i> <b>STRIPE</b></div>
+                <div class="brutal-card p-6 flex items-center gap-4"><i class="fab fa-google-pay fa-2x"></i> <b>GOOGLE PAY</b></div>
+                <div class="brutal-card p-6 flex items-center gap-4"><i class="fab fa-apple-pay fa-2x"></i> <b>APPLE PAY</b></div>
+                <div class="brutal-card p-6 flex items-center gap-4"><i class="fab fa-aws fa-2x"></i> <b>AMAZON WEB</b></div>
+                <div class="brutal-card p-6 flex items-center gap-4"><i class="fab fa-cc-mastercard fa-2x"></i> <b>MASTERCARD</b></div>
+                <div class="brutal-card p-6 flex items-center gap-4"><i class="fab fa-cloudflare fa-2x"></i> <b>CLOUDFLARE</b></div>
+                <div class="brutal-card p-6 flex items-center gap-4"><i class="fab fa-github fa-2x"></i> <b>GITHUB ENTERPRISE</b></div>
+                <div class="brutal-card p-6 flex items-center gap-4 bg-accent"><b>BANK INDONESIA</b></div>
+            </div>
+        </section>
+
+        <!-- PAGE 5: CAPABILITIES -->
+        <section id="page5" class="min-h-screen bg-white px-10 py-20 flex flex-col justify-center border-t-8 border-black">
+            <div class="flex flex-col md:flex-row gap-20 items-center">
+                <div class="md:w-1/2">
+                    <h2 class="text-6xl font-black mb-8">BISA APA SAJA?</h2>
+                    <ul class="space-y-6 text-2xl font-bold">
+                        <li class="flex items-center gap-4"><i class="fas fa-check-square text-primary"></i> Bayar Apapun via QRIS Scan</li>
+                        <li class="flex items-center gap-4"><i class="fas fa-check-square text-primary"></i> Virtual Credit Card Instan</li>
+                        <li class="flex items-center gap-4"><i class="fas fa-check-square text-primary"></i> Simpanan Dollar Bunga Tinggi</li>
+                        <li class="flex items-center gap-4"><i class="fas fa-check-square text-primary"></i> Pinjaman Tanpa Ribet AI-Verified</li>
+                    </ul>
+                </div>
+                <div class="md:w-1/2 brutal-card bg-accent p-10 rotate-3">
+                    <img src="https://images.unsplash.com/photo-1556742049-04ff4f6a9271?auto=format&fit=crop&w=800&q=80" class="border-4 border-black shadow-[10px_10px_0px_#000]" alt="Pay">
+                </div>
+            </div>
+        </section>
+
+        <!-- PAGE 6: FAQ -->
+        <section id="page6" class="min-h-screen bg-accent px-10 py-20 border-t-8 border-black">
+            <h2 class="text-5xl font-black mb-12">PERTANYAAN UMUM</h2>
+            <div class="space-y-4 max-w-4xl">
+                <details class="brutal-card bg-white p-6 cursor-pointer">
+                    <summary class="font-black text-xl">Apakah aman menyimpan uang di sini?</summary>
+                    <p class="mt-4">Sangat aman. Kami menggunakan enkripsi end-to-end dan diawasi langsung oleh otoritas keuangan nasional.</p>
+                </details>
+                <details class="brutal-card bg-white p-6 cursor-pointer">
+                    <summary class="font-black text-xl">Bagaimana cara mendaftar?</summary>
+                    <p class="mt-4">Cukup siapkan E-KTP dan selfie. Proses verifikasi AI kami hanya memakan waktu 5 menit.</p>
+                </details>
+                <details class="brutal-card bg-white p-6 cursor-pointer">
+                    <summary class="font-black text-xl">Apakah ada kantor fisiknya?</summary>
+                    <p class="mt-4">Kami adalah digital-first bank, namun kami memiliki kantor pusat di Jakarta untuk operasional strategis.</p>
+                </details>
+            </div>
+        </section>
+
+        <!-- FOOTER -->
+        <footer class="bg-black text-white px-10 py-20 border-t-8 border-primary">
+            <div class="grid md:grid-cols-4 gap-10 mb-20">
+                <div>
+                    <div class="brand text-xl font-black bg-primary text-white p-2 border-4 border-white inline-block mb-6">NEO_BANK</div>
+                    <p class="opacity-70">Revolusi perbankan digital masa depan. Dibangun dengan kode, diperkuat dengan kepercayaan.</p>
+                </div>
+                <div>
+                    <h4 class="font-black mb-6 text-secondary">LINKS</h4>
+                    <ul class="space-y-2 opacity-70">
+                        <li><a href="javascript:void(0)" onclick="confirmLeave('https://github.com')">GitHub Project</a></li>
+                        <li><a href="javascript:void(0)" onclick="confirmLeave('https://linkedin.com')">LinkedIn</a></li>
+                        <li><a href="javascript:void(0)" onclick="confirmLeave('https://instagram.com')">Instagram</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-black mb-6 text-accent">LEGAL</h4>
+                    <p class="text-sm opacity-70">NeoBank telah diawasi oleh <b>Bank Indonesia</b> dan <b>Komdigi</b>. Seluruh dana nasabah dijamin oleh LPS sesuai ketentuan yang berlaku.</p>
+                </div>
+                <div>
+                    <h4 class="font-black mb-6 text-primary">NEWSLETTER</h4>
+                    <div class="flex">
+                        <input type="text" class="p-2 text-black w-full" placeholder="email@kamu.com">
+                        <button class="bg-primary px-4 border-2 border-white">GO</button>
+                    </div>
+                </div>
+            </div>
+            <div class="text-center opacity-50 border-t border-gray-800 pt-10">
+                &copy; 2024 NEOBANK RADICAL SYSTEM. NO RIGHTS RESERVED.
+            </div>
+        </footer>
+    </div>
+
+    <!-- LOGIN & REGISTER OVERLAY (LIQUID GLASS) -->
+    <div id="login-overlay" class="fixed inset-0 z-[100] liquid-bg p-4 flex items-center justify-center">
+        <div class="liquid-glass w-full max-w-md p-10 text-white relative overflow-hidden">
+            <button onclick="hideLogin()" class="absolute top-6 right-6 text-2xl"><i class="fas fa-times"></i></button>
+            
+            <div id="auth-login">
+                <h2 class="text-4xl font-black mb-2">WELCOME BACK</h2>
+                <p class="mb-8 opacity-80">iOS 26 Liquid Authentication</p>
+                <input type="text" id="login-user" placeholder="Username (admin)" class="w-full bg-white/10 border border-white/20 p-4 rounded-2xl mb-4 outline-none focus:bg-white/20">
+                <input type="password" id="login-pass" placeholder="Password (admin)" class="w-full bg-white/10 border border-white/20 p-4 rounded-2xl mb-6 outline-none focus:bg-white/20">
+                <button onclick="doLogin()" class="w-full bg-white text-black font-bold p-4 rounded-2xl hover:scale-105 transition">SIGN IN</button>
+                <p class="mt-6 text-center">Belum punya akun? <a href="#" onclick="toggleAuth()" class="font-bold underline">Daftar</a></p>
+            </div>
+
+            <div id="auth-regis" class="hidden">
+                <h2 class="text-4xl font-black mb-2">CREATE ACCOUNT</h2>
+                <p class="mb-8 opacity-80">Join the Radical System</p>
+                <input type="text" id="reg-user" placeholder="Choose Username" class="w-full bg-white/10 border border-white/20 p-4 rounded-2xl mb-4 outline-none focus:bg-white/20">
+                <input type="password" id="reg-pass" placeholder="Create Password" class="w-full bg-white/10 border border-white/20 p-4 rounded-2xl mb-6 outline-none focus:bg-white/20">
+                <button onclick="doRegis()" class="w-full bg-secondary text-black font-bold p-4 rounded-2xl hover:scale-105 transition">REGISTER NOW</button>
+                <p class="mt-6 text-center">Sudah punya akun? <a href="#" onclick="toggleAuth()" class="font-bold underline">Login</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP DASHBOARD -->
+    <div id="main-app" class="flex h-screen overflow-hidden bg-[#fafafa]">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-white border-r-4 border-black p-6 flex flex-col justify-between">
+            <div>
+                <div class="brand text-lg font-black bg-primary text-white p-2 border-4 border-black shadow-[4px_4px_0px_#000] mb-10 text-center">NEO_BANK</div>
+                <div class="sidebar-item active" onclick="dashTab('home')"><i class="fas fa-home mr-3"></i> BERANDA</div>
+                <div class="sidebar-item" onclick="dashTab('transfer')"><i class="fas fa-exchange-alt mr-3"></i> TRANSAKSI</div>
+                <div class="sidebar-item" onclick="dashTab('card')"><i class="fas fa-credit-card mr-3"></i> KARTU</div>
+                <div class="sidebar-item" onclick="dashTab('profile')"><i class="fas fa-user-shield mr-3"></i> KEAMANAN</div>
+            </div>
+            <button onclick="logout()" class="brutal-btn bg-black text-white p-3 w-full">LOGOUT</button>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto p-10">
+            <header class="flex justify-between items-center mb-10">
+                <h2 class="text-3xl font-black" id="dash-title">DASHBOARD_OVERVIEW</h2>
+                <div class="flex items-center gap-4">
+                    <span class="font-bold" id="user-display">ADMIN</span>
+                    <div class="w-12 h-12 bg-accent border-4 border-black rounded-full flex items-center justify-center font-black">A</div>
+                </div>
+            </header>
+
+            <div id="dash-home" class="space-y-10">
+                <div class="grid md:grid-cols-3 gap-6">
+                    <div class="brutal-card bg-secondary p-6">
+                        <div class="flex justify-between items-start mb-4">
+                            <span class="font-bold">TOTAL SALDO</span>
+                            <button onclick="toggleBalance()"><i class="fas fa-eye" id="eye-icon"></i></button>
+                        </div>
+                        <div class="text-3xl font-black" id="balance-val">Rp 24.850.200</div>
+                    </div>
+                    <div class="brutal-card bg-accent p-6">
+                        <span class="font-bold block mb-4">PENGELUARAN BULAN INI</span>
+                        <div class="text-3xl font-black">Rp 4.210.000</div>
+                    </div>
+                    <div class="brutal-card bg-white p-6">
+                        <span class="font-bold block mb-4">NEO_POINTS</span>
+                        <div class="text-3xl font-black text-primary">12.450 pts</div>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-10">
+                    <div class="brutal-card p-6">
+                        <h3 class="font-black mb-6 border-b-4 border-black pb-2">HISTORY_TRANSAKSI</h3>
+                        <div class="space-y-4" id="history-list">
+                            <!-- JS Inject -->
+                            <div class="flex justify-between items-center p-3 border-2 border-black">
+                                <span><b>QRIS:</b> TOKOPEDIA</span>
+                                <span class="text-red-500 font-black">- Rp 450.000</span>
+                            </div>
+                            <div class="flex justify-between items-center p-3 border-2 border-black">
+                                <span><b>TOPUP:</b> GOPAY</span>
+                                <span class="text-red-500 font-black">- Rp 100.000</span>
+                            </div>
+                            <div class="flex justify-between items-center p-3 border-2 border-black bg-green-100">
+                                <span><b>INCOME:</b> SALARY</span>
+                                <span class="text-green-600 font-black">+ Rp 15.000.000</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="brutal-card p-6 bg-black text-white">
+                        <h3 class="font-black mb-6 border-b-4 border-white pb-2">QUICK_ACTION</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <button class="border-2 border-white p-4 hover:bg-primary transition font-bold">KIRIM UANG</button>
+                            <button class="border-2 border-white p-4 hover:bg-secondary transition font-bold text-black bg-white">BAYAR TAGIHAN</button>
+                            <button class="border-2 border-white p-4 hover:bg-accent transition font-bold text-black">VIRTUAL CARD</button>
+                            <button class="border-2 border-white p-4 hover:bg-white hover:text-black transition font-bold">MUTASI PDF</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="dash-transfer" class="hidden">
+                <div class="brutal-card p-10 max-w-xl mx-auto">
+                    <h3 class="text-2xl font-black mb-6">TRANSFER_DANA</h3>
+                    <div class="space-y-4">
+                        <input type="text" placeholder="Rekening Tujuan" class="w-full border-4 border-black p-4 font-bold outline-none">
+                        <input type="number" placeholder="Nominal Rp" class="w-full border-4 border-black p-4 font-bold outline-none">
+                        <button class="brutal-btn bg-primary text-white w-full py-4 text-xl">KONFIRMASI PENGIRIMAN</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // GSAP Animations on Load
+        window.onload = () => {
+            gsap.from("nav", { y: -100, opacity: 0, duration: 1 });
+            gsap.from("#hero-text h1", { x: -200, opacity: 0, duration: 1, delay: 0.5 });
+            gsap.from("#hero-text p", { x: -100, opacity: 0, duration: 1, delay: 0.8 });
+            gsap.from("#hero-phone", { scale: 0.5, opacity: 0, duration: 1.2, ease: "back.out(1.7)", delay: 1 });
+        };
+
+        // ScrollTrigger Animations
+        gsap.registerPlugin(ScrollTrigger);
+        gsap.utils.toArray(".brutal-card").forEach(card => {
+            gsap.from(card, {
+                scrollTrigger: card,
+                y: 50, opacity: 0, duration: 0.8, stagger: 0.2
+            });
+        });
+
+        // Authentication State
+        let users = { "admin": "admin" };
+        let currentUser = null;
+        let balanceHidden = false;
+        let realBalance = "Rp 24.850.200";
+
+        function showLogin() {
+            gsap.to("#login-overlay", { display: "flex", opacity: 1, duration: 0.5 });
+            gsap.from(".liquid-glass", { scale: 0.8, y: 50, duration: 0.5 });
+        }
+
+        function hideLogin() {
+            gsap.to("#login-overlay", { opacity: 0, duration: 0.5, onComplete: () => {
+                document.getElementById('login-overlay').style.display = "none";
+            }});
+        }
+
+        function toggleAuth() {
+            const login = document.getElementById('auth-login');
+            const regis = document.getElementById('auth-regis');
+            if(login.classList.contains('hidden')) {
+                login.classList.remove('hidden'); regis.classList.add('hidden');
+            } else {
+                login.classList.add('hidden'); regis.classList.remove('hidden');
+            }
+        }
+
+        function doRegis() {
+            const u = document.getElementById('reg-user').value;
+            const p = document.getElementById('reg-pass').value;
+            if(u && p) {
+                users[u] = p;
+                alert("Registrasi Berhasil! Silahkan Login.");
+                toggleAuth();
+            }
+        }
+
+        function doLogin() {
+            const u = document.getElementById('login-user').value;
+            const p = document.getElementById('login-pass').value;
+            if(users[u] && users[u] === p) {
+                currentUser = u;
+                document.getElementById('user-display').innerText = u.toUpperCase();
+                gsap.to("#landing-site", { opacity: 0, duration: 0.5, onComplete: () => {
+                    document.getElementById('landing-site').style.display = "none";
+                    document.getElementById('login-overlay').style.display = "none";
+                    document.getElementById('main-app').style.display = "flex";
+                    gsap.from("aside", { x: -300, duration: 0.8, ease: "power4.out" });
+                    gsap.from("main", { opacity: 0, duration: 1 });
+                }});
+            } else {
+                alert("Kredensial Salah!");
+            }
+        }
+
+        function logout() {
+            location.reload();
+        }
+
+        // Dashboard Tabs
+        function dashTab(tab) {
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            
+            document.getElementById('dash-home').classList.add('hidden');
+            document.getElementById('dash-transfer').classList.add('hidden');
+            
+            document.getElementById('dash-' + tab).classList.remove('hidden');
+            document.getElementById('dash-title').innerText = tab.toUpperCase() + "_VIEW";
+            
+            gsap.from("#dash-" + tab, { opacity: 0, y: 20, duration: 0.5 });
+        }
+
+        function toggleBalance() {
+            const val = document.getElementById('balance-val');
+            const eye = document.getElementById('eye-icon');
+            balanceHidden = !balanceHidden;
+            if(balanceHidden) {
+                val.innerText = "Rp ••••••••";
+                eye.classList.replace('fa-eye', 'fa-eye-slash');
+            } else {
+                val.innerText = realBalance;
+                eye.classList.replace('fa-eye-slash', 'fa-eye');
+            }
+        }
+
+        // Leave Confirmation
+        function confirmLeave(url) {
+            const modal = document.getElementById('leave-modal');
+            const link = document.getElementById('leave-link');
+            modal.classList.remove('hidden');
+            link.href = url;
+            gsap.from(modal.querySelector('.brutal-card'), { scale: 0.8, duration: 0.3 });
+        }
+
+        function closeLeaveModal() {
+            document.getElementById('leave-modal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
