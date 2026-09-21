@@ -130,7 +130,7 @@ function parseKantongPayPayload(rawValue = "") {
   }
 }
 
-function parseEmvTlv(value = "") {
+function parseEmvTlv(value = "", allowTrailingAfterCrc = false) {
   const fields = {};
   let cursor = 0;
   while (cursor + 4 <= value.length) {
@@ -140,31 +140,54 @@ function parseEmvTlv(value = "") {
     if (!/^\d{2}$/.test(tag) || !Number.isInteger(length) || end > value.length) return null;
     fields[tag] = value.slice(cursor + 4, end);
     cursor = end;
+    // Some issuer QRIS payloads append proprietary data after the EMV CRC.
+    // The QRIS fields before tag 63 remain valid and are enough to pay.
+    if (allowTrailingAfterCrc && tag === "63") return fields;
   }
   return cursor === value.length ? fields : null;
 }
 
-function getQrisProvider(payload = "") {
-  const upperPayload = payload.toUpperCase();
-  if (upperPayload.includes("ID.DANA.WWW")) return { id: "dana", name: "DANA", logo: "DANA" };
-  if (upperPayload.includes("COM.GO-JEK.WWW") || upperPayload.includes("GOPAY")) return { id: "gopay", name: "GoPay", logo: "gopay" };
-  if (upperPayload.includes("ID.CO.SHOPEE.WWW")) return { id: "shopeepay", name: "ShopeePay", logo: "S" };
-  if (upperPayload.includes("OVO")) return { id: "ovo", name: "OVO", logo: "OVO" };
-  if (upperPayload.includes("LINKAJA")) return { id: "linkaja", name: "LinkAja", logo: "LinkAja" };
+const qrisAcquirerMap = {
+  "93600002": { id: "qris", logo: "QRIS", name: "GPN / Netzme" },
+  "93600910": { id: "linkaja", logo: "LinkAja", name: "LinkAja" },
+  "93600911": { id: "gopay", logo: "gopay", name: "GoPay" },
+  "93600912": { id: "shopeepay", logo: "S", name: "ShopeePay" },
+  "93600913": { id: "ovo", logo: "OVO", name: "OVO" },
+  "93600915": { id: "dana", logo: "DANA", name: "DANA" },
+};
+
+function getQrisProvider(merchantTemplates = []) {
+  const identifiers = merchantTemplates
+    .flatMap(({ fields, value }) => [fields?.["00"], value])
+    .filter(Boolean)
+    .map((identifier) => identifier.toUpperCase());
+  if (identifiers.some((identifier) => identifier.includes("ID.DANA.WWW"))) return { id: "dana", name: "DANA", logo: "DANA" };
+  if (identifiers.some((identifier) => identifier.includes("COM.GO-JEK.WWW") || identifier.includes("GOPAY"))) return { id: "gopay", name: "GoPay", logo: "gopay" };
+  if (identifiers.some((identifier) => identifier.includes("ID.CO.SHOPEE.WWW"))) return { id: "shopeepay", name: "ShopeePay", logo: "S" };
+  if (identifiers.some((identifier) => identifier.includes("ID.OVO.WWW") || identifier.includes("OVO"))) return { id: "ovo", name: "OVO", logo: "OVO" };
+  if (identifiers.some((identifier) => identifier.includes("ID.LINKAJA.WWW") || identifier.includes("LINKAJA"))) return { id: "linkaja", name: "LinkAja", logo: "LinkAja" };
+  const acquirerId = merchantTemplates
+    .map(({ fields, value }) => `${fields?.["01"] || ""}${value}`.match(/936\d{5}/)?.[0])
+    .find(Boolean);
+  if (acquirerId && qrisAcquirerMap[acquirerId]) return qrisAcquirerMap[acquirerId];
   return { id: "qris", name: "QRIS", logo: "QRIS" };
 }
 
 function parseQrisPayload(rawValue = "") {
-  const payload = String(rawValue).replace(/\s/g, "");
+  const cleanedPayload = String(rawValue).replace(/\s/g, "");
+  const qrisStart = cleanedPayload.indexOf("000201");
+  const payload = qrisStart >= 0 ? cleanedPayload.slice(qrisStart) : cleanedPayload;
   if (!payload.startsWith("000201")) return null;
-  const fields = parseEmvTlv(payload);
+  const fields = parseEmvTlv(payload, true);
   if (!fields || fields["00"] !== "01" || !fields["59"] || !fields["63"]) return null;
 
-  const merchantTemplate = Object.entries(fields)
+  const merchantTemplates = Object.entries(fields)
     .filter(([tag]) => Number(tag) >= 26 && Number(tag) <= 51)
-    .map(([, value]) => parseEmvTlv(value))
+    .map(([tag, value]) => ({ fields: parseEmvTlv(value), tag, value }));
+  const merchantTemplate = merchantTemplates
+    .map(({ fields }) => fields)
     .find(Boolean) || {};
-  const provider = getQrisProvider(payload);
+  const provider = getQrisProvider(merchantTemplates);
   const amount = Number.parseFloat(fields["54"] || "0");
 
   return {
@@ -172,14 +195,27 @@ function parseQrisPayload(rawValue = "") {
     city: fields["60"] || "-",
     isExternalQris: true,
     merchant: fields["59"],
-    merchantId: merchantTemplate["01"] || merchantTemplate["00"] || "-",
+    merchantId: merchantTemplate["02"] || merchantTemplate["01"] || merchantTemplate["00"] || "-",
     paymentType: "QRIS",
     provider,
+    qrisType: fields["01"] === "12" ? "Dinamis" : "Statis",
   };
 }
 
 function parsePaymentQrPayload(rawValue = "") {
   return parseKantongPayPayload(rawValue) || parseQrisPayload(rawValue);
+}
+
+function getUnsupportedQrDescription(rawValue = "") {
+  try {
+    const url = new URL(rawValue);
+    if (url.hostname.endsWith("dana.id")) {
+      return "Ini QR Profil DANA, bukan QRIS pembayaran. QR ini hanya dapat dibuka di aplikasi DANA dan tidak memuat data merchant QRIS.";
+    }
+  } catch {
+    // The scanned data is not a URL; use the generic QRIS message below.
+  }
+  return "Kode yang terbaca bukan payload QRIS pembayaran.";
 }
 
 function ProviderLogo({ provider = { id: "qris", logo: "QRIS", name: "QRIS" } }) {
@@ -2276,31 +2312,39 @@ function TransferView({ account, notify, onBack, onTransfer, transactions = [], 
   );
 }
 
-function QrisScannerView({ notify, onBack, onDetected }) {
+function QrisScannerView({ notify, onBack, onDetected, scanResetKey = 0 }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const scanLoopRef = useRef(0);
   const autoOpenRef = useRef(false);
+  const lastRejectedValueRef = useRef("");
+  const lastScanResetKeyRef = useRef(scanResetKey);
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isScanPaused, setIsScanPaused] = useState(false);
 
   const handleDecoded = useCallback((rawValue) => {
     const payload = parsePaymentQrPayload(rawValue);
     if (!payload) {
-      notify?.({
-        description: "Gunakan QRIS yang valid atau QR pembayaran KantongKu.",
-        title: "QR tidak valid",
-        type: "error",
-      });
-      return;
+      if (lastRejectedValueRef.current !== rawValue) {
+        lastRejectedValueRef.current = rawValue;
+        notify?.({
+          description: getUnsupportedQrDescription(rawValue),
+          title: "QR tidak valid",
+          type: "error",
+        });
+      }
+      return false;
     }
 
+    lastRejectedValueRef.current = "";
     notify?.({
       description: "Data pembayaran QR berhasil dibaca.",
       title: "QRIS terbaca",
       type: "success",
     });
     onDetected?.(payload);
+    return true;
   }, [notify, onDetected]);
 
   const stopCamera = useCallback(() => {
@@ -2327,21 +2371,41 @@ function QrisScannerView({ notify, onBack, onDetected }) {
     const result = jsQR(imageData.data, imageData.width, imageData.height);
 
     if (result?.data) {
-      stopCamera();
-      handleDecoded(result.data);
-      return;
+      if (handleDecoded(result.data)) {
+        setIsScanPaused(true);
+        return;
+      }
     }
 
     scanLoopRef.current = window.requestAnimationFrame(scanFrame);
   }, [handleDecoded, stopCamera]);
 
+  useEffect(() => {
+    if (scanResetKey === lastScanResetKeyRef.current) return;
+    lastScanResetKeyRef.current = scanResetKey;
+    if (!isScanPaused) return;
+    setIsScanPaused(false);
+    if (streamRef.current) scanLoopRef.current = window.requestAnimationFrame(scanFrame);
+  }, [isScanPaused, scanFrame, scanResetKey]);
+
   const startCamera = useCallback(async () => {
     if (streamRef.current) return;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera API tidak tersedia");
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            height: { ideal: 1080 },
+            width: { ideal: 1920 },
+          },
+        });
+      } catch {
+        // Desktop and some Android browsers do not expose a rear-camera label.
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -2349,9 +2413,9 @@ function QrisScannerView({ notify, onBack, onDetected }) {
       }
       setIsCameraActive(true);
       scanLoopRef.current = window.requestAnimationFrame(scanFrame);
-    } catch {
+    } catch (error) {
       notify?.({
-        description: "Kamera tidak bisa dibuka. Coba import gambar QR dari galeri.",
+        description: `Kamera tidak bisa dibuka (${error?.name || "izin kamera ditolak"}). Izinkan akses kamera di browser, lalu coba lagi atau import gambar QR.`,
         title: "Kamera gagal",
         type: "error",
       });
@@ -2414,13 +2478,13 @@ function QrisScannerView({ notify, onBack, onDetected }) {
             </button>
             <span className="transfer-head-badge">
               <Send size={14} />
-              QRIS KantongKu
+              QRIS PAYMENT
             </span>
           </div>
 
           <p className="eyebrow">QRIS KantongKu</p>
           <h2 className="qris-scan-title">Scan pembayaran</h2>
-          <p className="qris-scan-copy">Arahkan kamera ke QRIS apa pun—DANA, GoPay, ShopeePay, dan merchant QRIS lainnya—atau import gambarnya dari galeri.</p>
+          <p className="qris-scan-copy">Arahkan kamera ke kode QR untuk melanjutkan pembayaran.</p>
 
           <section className="qris-scanner-frame">
             <video ref={videoRef} muted playsInline />
@@ -2753,9 +2817,14 @@ function PaymentRequestSheet({ notify, onClose, onPay, request, user }) {
         <div className="payment-merchant">
           {isExternalQris ? <ProviderLogo provider={request.provider} /> : <span className="avatar">{recipient?.full_name?.slice(0, 2).toUpperCase() || "KK"}</span>}
           <div>
-            <p className="eyebrow">{isExternalQris ? `${request.provider.name} · QRIS` : "QRIS KantongKu"}</p>
+            <p className="eyebrow">{isExternalQris ? "QRIS PAYMENT" : "QRIS KantongKu"}</p>
             <h2>{merchantName || "Memuat penerima..."}</h2>
-            <small>{isExternalQris ? `${request.city} · ID ${request.merchantId}` : recipient?.account_number ? formatPlainAccountNumber(recipient.account_number) : "Validasi nomor rekening"}</small>
+            {isExternalQris ? (
+              <>
+                <small className="block">QRIS - {request.provider.name}</small>
+                <small className="block">QRIS {request.qrisType} · {request.city} · ID {request.merchantId}</small>
+              </>
+            ) : <small>{recipient?.account_number ? formatPlainAccountNumber(recipient.account_number) : "Validasi nomor rekening"}</small>}
           </div>
         </div>
 
@@ -2834,6 +2903,7 @@ function Dashboard({ notify, onBack, onLogout, user = demoUser }) {
   const [activeView, setActiveView] = useState(initialView);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [paymentRequest, setPaymentRequest] = useState(() => getPayRequest());
+  const [scanResetKey, setScanResetKey] = useState(0);
   const [account, setAccount] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
@@ -3064,6 +3134,7 @@ function Dashboard({ notify, onBack, onLogout, user = demoUser }) {
               notify={notify}
               onBack={() => handleNavigate("dashboard")}
               onDetected={(payload) => setPaymentRequest(payload)}
+              scanResetKey={scanResetKey}
             />
           ) : activeView === "receive" ? (
             <ReceiveMoneyView
@@ -3148,6 +3219,7 @@ function Dashboard({ notify, onBack, onLogout, user = demoUser }) {
         notify={notify}
         onClose={() => {
           setPaymentRequest(null);
+          setScanResetKey((current) => current + 1);
           window.history.replaceState({ screen: "dashboard", user: user.slug }, "", createUserWorkspaceUrl(user.slug));
         }}
         onPay={(payload) => handleQuickActionSubmit({ ...payload, action: "transfer", suppressToast: true })}
