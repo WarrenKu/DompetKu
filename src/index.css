@@ -3622,6 +3622,29 @@ button:focus-visible {
   padding-right: 42px;
 }
 
+.payment-provider-logo {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border: 2px solid var(--color-ink);
+  border-radius: 10px;
+  color: white;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: -0.07em;
+  line-height: 1;
+  text-transform: none;
+}
+
+.provider-dana { background: #118eea; }
+.provider-gopay { background: #00aed6; font-size: 9px; }
+.provider-shopeepay { background: #ee4d2d; font-size: 20px; letter-spacing: 0; }
+.provider-ovo { background: #4c2a86; }
+.provider-linkaja { background: #e5222a; font-size: 8px; letter-spacing: -0.09em; }
+.provider-qris { background: var(--color-ink); font-size: 9px; letter-spacing: -0.03em; }
+
 .payment-merchant h2 {
   font-family: var(--font-display);
   font-size: 1.2rem;

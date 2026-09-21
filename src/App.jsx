@@ -130,6 +130,62 @@ function parseKantongPayPayload(rawValue = "") {
   }
 }
 
+function parseEmvTlv(value = "") {
+  const fields = {};
+  let cursor = 0;
+  while (cursor + 4 <= value.length) {
+    const tag = value.slice(cursor, cursor + 2);
+    const length = Number(value.slice(cursor + 2, cursor + 4));
+    const end = cursor + 4 + length;
+    if (!/^\d{2}$/.test(tag) || !Number.isInteger(length) || end > value.length) return null;
+    fields[tag] = value.slice(cursor + 4, end);
+    cursor = end;
+  }
+  return cursor === value.length ? fields : null;
+}
+
+function getQrisProvider(payload = "") {
+  const upperPayload = payload.toUpperCase();
+  if (upperPayload.includes("ID.DANA.WWW")) return { id: "dana", name: "DANA", logo: "DANA" };
+  if (upperPayload.includes("COM.GO-JEK.WWW") || upperPayload.includes("GOPAY")) return { id: "gopay", name: "GoPay", logo: "gopay" };
+  if (upperPayload.includes("ID.CO.SHOPEE.WWW")) return { id: "shopeepay", name: "ShopeePay", logo: "S" };
+  if (upperPayload.includes("OVO")) return { id: "ovo", name: "OVO", logo: "OVO" };
+  if (upperPayload.includes("LINKAJA")) return { id: "linkaja", name: "LinkAja", logo: "LinkAja" };
+  return { id: "qris", name: "QRIS", logo: "QRIS" };
+}
+
+function parseQrisPayload(rawValue = "") {
+  const payload = String(rawValue).replace(/\s/g, "");
+  if (!payload.startsWith("000201")) return null;
+  const fields = parseEmvTlv(payload);
+  if (!fields || fields["00"] !== "01" || !fields["59"] || !fields["63"]) return null;
+
+  const merchantTemplate = Object.entries(fields)
+    .filter(([tag]) => Number(tag) >= 26 && Number(tag) <= 51)
+    .map(([, value]) => parseEmvTlv(value))
+    .find(Boolean) || {};
+  const provider = getQrisProvider(payload);
+  const amount = Number.parseFloat(fields["54"] || "0");
+
+  return {
+    amount: Number.isFinite(amount) ? Math.round(amount) : 0,
+    city: fields["60"] || "-",
+    isExternalQris: true,
+    merchant: fields["59"],
+    merchantId: merchantTemplate["01"] || merchantTemplate["00"] || "-",
+    paymentType: "QRIS",
+    provider,
+  };
+}
+
+function parsePaymentQrPayload(rawValue = "") {
+  return parseKantongPayPayload(rawValue) || parseQrisPayload(rawValue);
+}
+
+function ProviderLogo({ provider = { id: "qris", logo: "QRIS", name: "QRIS" } }) {
+  return <span className={`payment-provider-logo provider-${provider.id}`} aria-label={provider.name}>{provider.logo}</span>;
+}
+
 function useToastController() {
   const [toasts, setToasts] = useState([]);
 
@@ -509,6 +565,23 @@ function formatDashboardDate(value) {
     minute: "2-digit",
     month: "short",
   }).format(new Date(value));
+}
+
+function getTimeGreeting(date = new Date()) {
+  const hour = date.getHours();
+  if (hour < 11) return "pagi";
+  if (hour < 15) return "siang";
+  if (hour < 18) return "sore";
+  return "malam";
+}
+
+function formatDashboardToday(date = new Date()) {
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "long",
+    weekday: "long",
+    year: "numeric",
+  }).format(date);
 }
 
 function getTransactionNotice(transaction) {
@@ -2212,10 +2285,10 @@ function QrisScannerView({ notify, onBack, onDetected }) {
   const [isCameraActive, setIsCameraActive] = useState(false);
 
   const handleDecoded = useCallback((rawValue) => {
-    const payload = parseKantongPayPayload(rawValue);
+    const payload = parsePaymentQrPayload(rawValue);
     if (!payload) {
       notify?.({
-        description: "QR tidak dikenali sebagai QRIS KantongKu.",
+        description: "Gunakan QRIS yang valid atau QR pembayaran KantongKu.",
         title: "QR tidak valid",
         type: "error",
       });
@@ -2347,7 +2420,7 @@ function QrisScannerView({ notify, onBack, onDetected }) {
 
           <p className="eyebrow">QRIS KantongKu</p>
           <h2 className="qris-scan-title">Scan pembayaran</h2>
-          <p className="qris-scan-copy">Arahkan kamera ke QR KantongKu, atau import gambar QR dari galeri.</p>
+          <p className="qris-scan-copy">Arahkan kamera ke QRIS apa pun—DANA, GoPay, ShopeePay, dan merchant QRIS lainnya—atau import gambarnya dari galeri.</p>
 
           <section className="qris-scanner-frame">
             <video ref={videoRef} muted playsInline />
@@ -2370,7 +2443,7 @@ function QrisScannerView({ notify, onBack, onDetected }) {
           <aside className="qris-scan-summary neo-card bg-lime">
             <p className="eyebrow">Ringkasan</p>
             <p>
-              Scan QR KantongKu untuk membuka panel bayar. Nominal bisa diisi lewat keypad aman sebelum pembayaran dikirim.
+              QRIS nominal tetap akan langsung menampilkan total. QRIS dinamis tetap meminta nominal lewat keypad aman.
             </p>
           </aside>
 
@@ -2506,8 +2579,10 @@ function PaymentRequestSheet({ notify, onClose, onPay, request, user }) {
   const [paymentStep, setPaymentStep] = useState(() => (Number(request?.amount || 0) ? "pin" : "amount"));
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const isExternalQris = Boolean(request?.isExternalQris);
   const lockedAmount = Number(request?.amount || 0);
   const amount = lockedAmount || Number(amountValue || 0);
+  const merchantName = isExternalQris ? request.merchant : recipient?.full_name;
 
   const closeWithAnimation = useCallback(() => {
     setIsClosing(true);
@@ -2531,6 +2606,8 @@ function PaymentRequestSheet({ notify, onClose, onPay, request, user }) {
     let isMounted = true;
 
     const loadRecipient = async () => {
+      setRecipient(null);
+      if (isExternalQris) return;
       if (!request?.to) return;
       const { data, error } = await supabase.rpc("lookup_kantong_recipient", {
         p_identifier: String(request.to).replace(/\D/g, ""),
@@ -2548,7 +2625,7 @@ function PaymentRequestSheet({ notify, onClose, onPay, request, user }) {
     return () => {
       isMounted = false;
     };
-  }, [notify, request?.to]);
+  }, [isExternalQris, notify, request?.to]);
 
   useEffect(() => {
     if (visiblePinIndex < 0) return undefined;
@@ -2613,7 +2690,7 @@ function PaymentRequestSheet({ notify, onClose, onPay, request, user }) {
 
   const handlePay = useCallback(async (pinOverride = pin) => {
     if (paymentLockRef.current) return;
-    if (!recipient) {
+    if (!isExternalQris && !recipient) {
       playTransferSound("error");
       notify?.({ description: "Penerima QR belum ditemukan.", title: "QR belum valid", type: "error" });
       return;
@@ -2623,7 +2700,7 @@ function PaymentRequestSheet({ notify, onClose, onPay, request, user }) {
       notify?.({ description: "Masukkan nominal pembayaran terlebih dahulu.", title: "Nominal belum valid", type: "error" });
       return;
     }
-    if (recipient.id === user.id) {
+    if (!isExternalQris && recipient.id === user.id) {
       playTransferSound("error");
       notify?.({ description: "Tidak bisa membayar QR milik akun sendiri.", title: "QR akun sendiri", type: "error" });
       return;
@@ -2637,7 +2714,11 @@ function PaymentRequestSheet({ notify, onClose, onPay, request, user }) {
     paymentLockRef.current = true;
     setIsConfirmed(true);
     setIsPaying(true);
-    const result = await onPay({
+    const result = await onPay(isExternalQris ? {
+      amount,
+      merchant: request.merchant,
+      note: `QRIS ${request.provider.name} - ${request.merchant}`,
+    } : {
       amount,
       merchant: recipient.full_name,
       note: `QRIS KantongKu - bayar ${formatDashboardMoney(amount)}`,
@@ -2655,11 +2736,11 @@ function PaymentRequestSheet({ notify, onClose, onPay, request, user }) {
     }
 
     playTransferSound("success");
-    notify?.({ description: `${formatDashboardMoney(amount)} terkirim ke ${recipient.full_name}.`, title: "Pembayaran berhasil", type: "success" });
+    notify?.({ description: `${formatDashboardMoney(amount)} terkirim ke ${merchantName}.`, title: "Pembayaran berhasil", type: "success" });
     closeWithAnimation();
-  }, [amount, closeWithAnimation, notify, onPay, pin, recipient, user.id, user.pin]);
+  }, [amount, closeWithAnimation, isExternalQris, merchantName, notify, onPay, pin, recipient, request?.merchant, request?.provider?.name, user.id, user.pin]);
 
-  if (!request?.to) return null;
+  if (!request || (!isExternalQris && !request.to)) return null;
 
   const hasPinStepCard = paymentStep === "pin" && Boolean(user.pin);
 
@@ -2670,11 +2751,11 @@ function PaymentRequestSheet({ notify, onClose, onPay, request, user }) {
           <X size={18} />
         </button>
         <div className="payment-merchant">
-          <span className="avatar">{recipient?.full_name?.slice(0, 2).toUpperCase() || "KK"}</span>
+          {isExternalQris ? <ProviderLogo provider={request.provider} /> : <span className="avatar">{recipient?.full_name?.slice(0, 2).toUpperCase() || "KK"}</span>}
           <div>
-            <p className="eyebrow">QRIS KantongKu</p>
-            <h2>{recipient?.full_name || "Memuat penerima..."}</h2>
-            <small>{recipient?.account_number ? formatPlainAccountNumber(recipient.account_number) : "Validasi nomor rekening"}</small>
+            <p className="eyebrow">{isExternalQris ? `${request.provider.name} · QRIS` : "QRIS KantongKu"}</p>
+            <h2>{merchantName || "Memuat penerima..."}</h2>
+            <small>{isExternalQris ? `${request.city} · ID ${request.merchantId}` : recipient?.account_number ? formatPlainAccountNumber(recipient.account_number) : "Validasi nomor rekening"}</small>
           </div>
         </div>
 
@@ -2751,11 +2832,18 @@ function PaymentRequestSheet({ notify, onClose, onPay, request, user }) {
 function Dashboard({ notify, onBack, onLogout, user = demoUser }) {
   const initialView = getUserWorkspace()?.section || "dashboard";
   const [activeView, setActiveView] = useState(initialView);
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const [paymentRequest, setPaymentRequest] = useState(() => getPayRequest());
   const [account, setAccount] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(true);
   const [activeAction, setActiveAction] = useState(null);
+
+  useEffect(() => {
+    const updateTime = () => setCurrentTime(new Date());
+    const timerId = window.setInterval(updateTime, 60_000);
+    return () => window.clearInterval(timerId);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -2812,6 +2900,8 @@ function Dashboard({ notify, onBack, onLogout, user = demoUser }) {
   }, [user.id]);
 
   const monthlyExpense = getMonthlyExpense(transactions);
+  const greeting = getTimeGreeting(currentTime);
+  const todayLabel = formatDashboardToday(currentTime);
   const handleNavigate = (view) => {
     setActiveView(view);
     setActiveAction(null);
@@ -2944,8 +3034,8 @@ function Dashboard({ notify, onBack, onLogout, user = demoUser }) {
             </button>
           </div>
           <div className="hidden lg:block">
-            <p className="text-sm font-bold text-muted">Sabtu, 4 Juli 2026</p>
-            <h1 className="font-display text-2xl font-black">Selamat siang, {user.name}!</h1>
+            <p className="text-sm font-bold text-muted">{todayLabel}</p>
+            <h1 className="font-display text-2xl font-black">Selamat {greeting}, {user.name}!</h1>
           </div>
 
           <div className="ml-auto flex items-center gap-3">
@@ -2963,8 +3053,8 @@ function Dashboard({ notify, onBack, onLogout, user = demoUser }) {
 
         <div className="content-shell">
           <div className="mb-6 lg:hidden">
-            <p className="text-sm font-bold text-muted">Sabtu, 4 Juli 2026</p>
-            <h1 className="font-display text-2xl font-black">Halo, {user.name}!</h1>
+            <p className="text-sm font-bold text-muted">{todayLabel}</p>
+            <h1 className="font-display text-2xl font-black">Selamat {greeting}, {user.name}!</h1>
           </div>
 
           {activeView === "settings" ? (
